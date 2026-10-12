@@ -1,11 +1,8 @@
 ﻿#include "Renderer.h"
 #include "Debug.h"
 #include <algorithm>
-#include <cstring>
 #include <iostream>
-#include <print>
-#include <stdexcept>
-#include <utility>
+
 
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
@@ -119,6 +116,59 @@ void Renderer::PickPhysicalDevice()
     }
 
     physicalDevice = std::move(*device);
+}
+
+void Renderer::CreateLogicalDevice()
+{
+    const auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
+    const auto graphicsQueueFamily = std::ranges::find_if(
+        queueFamilyProperties,
+        [](const auto& queueFamily)
+        {
+            return static_cast<bool>(queueFamily.queueFlags & vk::QueueFlagBits::eGraphics);
+        });
+
+    if (graphicsQueueFamily == queueFamilyProperties.end())
+    {
+        throw std::runtime_error("Failed to find a graphics queue family.");
+    }
+
+    graphicsQueueFamilyIndex = static_cast<uint32_t>(
+        std::distance(queueFamilyProperties.begin(), graphicsQueueFamily));
+
+    constexpr float queuePriority = 0.5f;
+    const vk::DeviceQueueCreateInfo queueCreateInfo
+    {
+        .queueFamilyIndex = graphicsQueueFamilyIndex,
+        .queueCount = 1,
+        .pQueuePriorities = &queuePriority
+    };
+
+    vk::StructureChain<
+        vk::PhysicalDeviceFeatures2,
+        vk::PhysicalDeviceVulkan11Features,
+        vk::PhysicalDeviceVulkan13Features,
+        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> 
+    
+    featureChain
+    {
+        {},
+        {.shaderDrawParameters = true},
+        {.dynamicRendering = true},
+        {.extendedDynamicState = true}
+    };
+
+    const vk::DeviceCreateInfo deviceCreateInfo
+    {
+        .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &queueCreateInfo,
+        .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+        .ppEnabledExtensionNames = requiredDeviceExtensions.data()
+    };
+
+    device = vk::raii::Device(physicalDevice, deviceCreateInfo);
+    graphicsQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
 }
 
 std::vector<char const*> Renderer::GetRequiredExtensions()
