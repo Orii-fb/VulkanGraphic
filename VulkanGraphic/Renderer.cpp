@@ -2,6 +2,7 @@
 #include "Debug.h"
 #include <algorithm>
 #include <iostream>
+#include <optional>
 
 
 #define GLFW_INCLUDE_VULKAN
@@ -11,15 +12,34 @@ namespace
 {
     const std::vector<char const*> requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 
-    bool IsDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice)
+    std::optional<uint32_t> FindGraphicsPresentQueueFamily(
+        const vk::raii::PhysicalDevice& physicalDevice,
+        const vk::raii::SurfaceKHR& surface)
+    {
+        const auto queueFamilies = physicalDevice.getQueueFamilyProperties();
+
+        for (uint32_t i = 0; i < queueFamilies.size(); ++i)
+        {
+            const bool supportsGraphics = static_cast<bool>(
+                queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics);
+            const bool supportsPresentation = physicalDevice.getSurfaceSupportKHR(i, surface);
+
+            if (queueFamilies[i].queueCount > 0 && supportsGraphics && supportsPresentation)
+            {
+                return i;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    bool IsDeviceSuitable(
+        const vk::raii::PhysicalDevice& physicalDevice,
+        const vk::raii::SurfaceKHR& surface)
     {
         const bool supportsVulkan13 = physicalDevice.getProperties().apiVersion >= vk::ApiVersion13;
-
-        const auto queueFamilies = physicalDevice.getQueueFamilyProperties();
-        const bool supportsGraphics = std::ranges::any_of(queueFamilies, [](const auto& queueFamily)
-        {
-            return static_cast<bool>(queueFamily.queueFlags & vk::QueueFlagBits::eGraphics);
-        });
+        const bool supportsGraphicsAndPresentation =
+            FindGraphicsPresentQueueFamily(physicalDevice, surface).has_value();
 
         const auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
         const bool supportsAllRequiredExtensions = std::ranges::all_of(
@@ -42,7 +62,10 @@ namespace
             features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
             features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
-        return supportsVulkan13 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+        return supportsVulkan13 &&
+            supportsGraphicsAndPresentation &&
+            supportsAllRequiredExtensions &&
+            supportsRequiredFeatures;
     }
 }
 
@@ -105,10 +128,25 @@ void Renderer::CreateInstance()
     SetupDebugMessenger();
 }
 
+void Renderer::CreateSurface(GLFWwindow* window)
+{
+    VkSurfaceKHR rawSurface = VK_NULL_HANDLE;
+
+    if (glfwCreateWindowSurface(*instance, window, nullptr, &rawSurface) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create window surface.");
+    }
+
+    surface = vk::raii::SurfaceKHR(instance, rawSurface);
+}
+
 void Renderer::PickPhysicalDevice()
 {
     auto physicalDevices = instance.enumeratePhysicalDevices();
-    const auto device = std::ranges::find_if(physicalDevices, IsDeviceSuitable);
+    const auto device = std::ranges::find_if(physicalDevices, [this](const auto& candidate)
+    {
+        return IsDeviceSuitable(candidate, surface);
+    });
 
     if (device == physicalDevices.end())
     {
@@ -116,26 +154,18 @@ void Renderer::PickPhysicalDevice()
     }
 
     physicalDevice = std::move(*device);
+
+    const auto queueFamilyIndex = FindGraphicsPresentQueueFamily(physicalDevice, surface);
+    if (!queueFamilyIndex.has_value())
+    {
+        throw std::runtime_error("Failed to find a queue family supporting graphics and presentation.");
+    }
+
+    graphicsQueueFamilyIndex = *queueFamilyIndex;
 }
 
 void Renderer::CreateLogicalDevice()
 {
-    const auto queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
-    const auto graphicsQueueFamily = std::ranges::find_if(
-        queueFamilyProperties,
-        [](const auto& queueFamily)
-        {
-            return static_cast<bool>(queueFamily.queueFlags & vk::QueueFlagBits::eGraphics);
-        });
-
-    if (graphicsQueueFamily == queueFamilyProperties.end())
-    {
-        throw std::runtime_error("Failed to find a graphics queue family.");
-    }
-
-    graphicsQueueFamilyIndex = static_cast<uint32_t>(
-        std::distance(queueFamilyProperties.begin(), graphicsQueueFamily));
-
     constexpr float queuePriority = 0.5f;
     const vk::DeviceQueueCreateInfo queueCreateInfo
     {
@@ -169,6 +199,12 @@ void Renderer::CreateLogicalDevice()
 
     device = vk::raii::Device(physicalDevice, deviceCreateInfo);
     graphicsQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
+    presentQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
+}
+
+void Renderer::DestroySurface()
+{
+    surface = nullptr;
 }
 
 std::vector<char const*> Renderer::GetRequiredExtensions()
