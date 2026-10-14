@@ -2,6 +2,7 @@
 #include "Debug.h"
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <optional>
 
 
@@ -11,6 +12,18 @@
 namespace
 {
     const std::vector<char const*> requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
+
+    SwapChainSupportDetails GetSwapChainSupportDetails(
+        const vk::raii::PhysicalDevice& device,
+        const vk::raii::SurfaceKHR& surface)
+    {
+        return
+        {
+            .capabilities = device.getSurfaceCapabilitiesKHR(surface),
+            .formats = device.getSurfaceFormatsKHR(surface),
+            .presentModes = device.getSurfacePresentModesKHR(surface)
+        };
+    }
 
     std::optional<uint32_t> FindGraphicsPresentQueueFamily(
         const vk::raii::PhysicalDevice& physicalDevice,
@@ -52,6 +65,15 @@ namespace
                 });
             });
 
+        bool supportsSwapChain = false;
+        if (supportsAllRequiredExtensions)
+        {
+            const auto swapChainSupport = GetSwapChainSupportDetails(physicalDevice, surface);
+            supportsSwapChain =
+                !swapChainSupport.formats.empty() &&
+                !swapChainSupport.presentModes.empty();
+        }
+
         const auto features = physicalDevice.getFeatures2<
             vk::PhysicalDeviceFeatures2,
             vk::PhysicalDeviceVulkan11Features,
@@ -65,6 +87,7 @@ namespace
         return supportsVulkan13 &&
             supportsGraphicsAndPresentation &&
             supportsAllRequiredExtensions &&
+            supportsSwapChain &&
             supportsRequiredFeatures;
     }
 }
@@ -200,6 +223,139 @@ void Renderer::CreateLogicalDevice()
     device = vk::raii::Device(physicalDevice, deviceCreateInfo);
     graphicsQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
     presentQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
+}
+
+vk::SurfaceFormatKHR Renderer::ChooseSwapSurfaceFormat(
+    const std::vector<vk::SurfaceFormatKHR>& availableFormats) const
+{
+    const auto preferredFormat = std::ranges::find_if(
+        availableFormats,
+        [](const vk::SurfaceFormatKHR& format)
+        {
+            return format.format == vk::Format::eB8G8R8A8Srgb &&
+                format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+        });
+
+    return preferredFormat != availableFormats.end() ? *preferredFormat : availableFormats.front();
+}
+
+vk::PresentModeKHR Renderer::ChooseSwapPresentMode(
+    const std::vector<vk::PresentModeKHR>& availablePresentModes) const
+{
+    const auto preferredMode = std::ranges::find(
+        availablePresentModes,
+        vk::PresentModeKHR::eMailbox);
+
+    return preferredMode != availablePresentModes.end()
+        ? *preferredMode
+        : vk::PresentModeKHR::eFifo;
+}
+
+vk::Extent2D Renderer::ChooseSwapExtent(
+    const vk::SurfaceCapabilitiesKHR& capabilities,
+    GLFWwindow* window) const
+{
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+    {
+        return capabilities.currentExtent;
+    }
+
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    return
+    {
+        .width = std::clamp(
+            static_cast<uint32_t>(width),
+            capabilities.minImageExtent.width,
+            capabilities.maxImageExtent.width),
+        .height = std::clamp(
+            static_cast<uint32_t>(height),
+            capabilities.minImageExtent.height,
+            capabilities.maxImageExtent.height)
+    };
+}
+
+void Renderer::CreateSwapChain(GLFWwindow* window)
+{
+    const auto swapChainSupport = GetSwapChainSupportDetails(physicalDevice, surface);
+    if (swapChainSupport.formats.empty() || swapChainSupport.presentModes.empty())
+    {
+        throw std::runtime_error("The surface has no supported swap chain formats or presentation modes.");
+    }
+
+    const auto surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
+    const auto presentMode = ChooseSwapPresentMode(swapChainSupport.presentModes);
+    const auto extent = ChooseSwapExtent(swapChainSupport.capabilities, window);
+
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+    if (swapChainSupport.capabilities.maxImageCount > 0 &&
+        imageCount > swapChainSupport.capabilities.maxImageCount)
+    {
+        imageCount = swapChainSupport.capabilities.maxImageCount;
+    }
+
+    const vk::SwapchainCreateInfoKHR createInfo
+    {
+        .surface = surface,
+        .minImageCount = imageCount,
+        .imageFormat = surfaceFormat.format,
+        .imageColorSpace = surfaceFormat.colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageSharingMode = vk::SharingMode::eExclusive,
+        .preTransform = swapChainSupport.capabilities.currentTransform,
+        .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+        .presentMode = presentMode,
+        .clipped = vk::True,
+        .oldSwapchain = nullptr
+    };
+
+    swapChain = device.createSwapchainKHR(createInfo);
+    swapChainImages = swapChain.getImages();
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent = extent;
+}
+
+void Renderer::CreateImageViews()
+{
+    swapChainImageViews.reserve(swapChainImages.size());
+
+    for (const auto& image : swapChainImages)
+    {
+        vk::ImageViewCreateInfo createInfo
+        {
+            .image = image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = swapChainImageFormat,
+            .components =
+            {
+                .r = vk::ComponentSwizzle::eIdentity,
+                .g = vk::ComponentSwizzle::eIdentity,
+                .b = vk::ComponentSwizzle::eIdentity,
+                .a = vk::ComponentSwizzle::eIdentity
+            },
+            .subresourceRange =
+            {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+
+        swapChainImageViews.emplace_back(device, createInfo);
+    }
+}
+
+void Renderer::DestroySwapChain()
+{
+    swapChainImageViews.clear();
+    swapChain = nullptr;
+    swapChainImages.clear();
 }
 
 void Renderer::DestroySurface()

@@ -36,6 +36,8 @@ void Application::InitVulkan()
     renderer.CreateSurface(window);
     renderer.PickPhysicalDevice();
     renderer.CreateLogicalDevice();
+    renderer.CreateSwapChain(window);
+    renderer.CreateImageViews();
 }
 
 void Application::DestroyWindow()
@@ -47,5 +49,6 @@ void Application::DestroyWindow()
 
 void Application::DestroyVulkan()
 {
+    renderer.DestroySwapChain();
     renderer.DestroySurface();
 }
