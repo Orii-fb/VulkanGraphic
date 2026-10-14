@@ -1,13 +1,15 @@
 ﻿#include "Renderer.h"
 #include "Debug.h"
+
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <optional>
-
-
-#define GLFW_INCLUDE_VULKAN
-#include "GLFW/glfw3.h"
+#include <print>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
 namespace
 {
