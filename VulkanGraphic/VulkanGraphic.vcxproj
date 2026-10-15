@@ -157,10 +157,26 @@
     <ClCompile Include="VulkanGraphic.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <CustomBuild Include="shaders\shader.vert">
+      <Command>"$(VULKAN_SDK)\Bin\glslc.exe" "$(ProjectDir)shaders\shader.vert" -o "$(ProjectDir)shaders\vert.spv"</Command>
+      <Message>Compiling vertex shader</Message>
+      <Outputs>$(ProjectDir)shaders\vert.spv</Outputs>
+    </CustomBuild>
+    <CustomBuild Include="shaders\shader.frag">
+      <Command>"$(VULKAN_SDK)\Bin\glslc.exe" "$(ProjectDir)shaders\shader.frag" -o "$(ProjectDir)shaders\frag.spv"</Command>
+      <Message>Compiling fragment shader</Message>
+      <Outputs>$(ProjectDir)shaders\frag.spv</Outputs>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="Application.h" />
     <ClInclude Include="Debug.h" />
     <ClInclude Include="Dependencies.h" />
     <ClInclude Include="Renderer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\shader.vert" />
+    <None Include="shaders\shader.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

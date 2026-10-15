@@ -21,6 +21,7 @@ public:
     void CreateLogicalDevice();
     void CreateSwapChain(GLFWwindow* window);
     void CreateImageViews();
+    void CreateGraphicsPipeline();
     void DestroySwapChain();
     void DestroySurface();
     
@@ -36,6 +37,8 @@ private:
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
     std::vector<vk::raii::ImageView> swapChainImageViews;
+    vk::raii::PipelineLayout pipelineLayout = nullptr;
+    vk::raii::Pipeline graphicsPipeline = nullptr;
     vk::Format swapChainImageFormat = vk::Format::eUndefined;
     vk::Extent2D swapChainExtent;
     uint32_t graphicsQueueFamilyIndex = 0;

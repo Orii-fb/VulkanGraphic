@@ -1,0 +1,4 @@
+^C:\USERS\MBRASSEL\SOURCE\REPOS\VULKANGRAPHIC\VULKANGRAPHIC\SHADERS\SHADER.VERT
+"C:\VulkanSDK\1.4.357.0\Bin\glslc.exe" "C:\Users\mbrassel\source\repos\VulkanGraphic\VulkanGraphic\shaders\shader.vert" -o "C:\Users\mbrassel\source\repos\VulkanGraphic\VulkanGraphic\shaders\vert.spv"
+^C:\USERS\MBRASSEL\SOURCE\REPOS\VULKANGRAPHIC\VULKANGRAPHIC\SHADERS\SHADER.FRAG
+"C:\VulkanSDK\1.4.357.0\Bin\glslc.exe" "C:\Users\mbrassel\source\repos\VulkanGraphic\VulkanGraphic\shaders\shader.frag" -o "C:\Users\mbrassel\source\repos\VulkanGraphic\VulkanGraphic\shaders\frag.spv"

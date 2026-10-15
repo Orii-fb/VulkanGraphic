@@ -38,6 +38,7 @@ void Application::InitVulkan()
     renderer.CreateLogicalDevice();
     renderer.CreateSwapChain(window);
     renderer.CreateImageViews();
+    renderer.CreateGraphicsPipeline();
 }
 
 void Application::DestroyWindow()

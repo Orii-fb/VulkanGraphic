@@ -2,7 +2,9 @@
 #include "Debug.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -14,6 +16,31 @@
 namespace
 {
     const std::vector<char const*> requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
+
+    std::vector<uint32_t> ReadSpirvFile(const std::string& filename)
+    {
+        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+        if (!file)
+        {
+            throw std::runtime_error("Failed to open shader file: " + filename);
+        }
+
+        const std::streamoff fileSize = file.tellg();
+        if (fileSize <= 0 || fileSize % sizeof(uint32_t) != 0)
+        {
+            throw std::runtime_error("Shader file has an invalid SPIR-V size: " + filename);
+        }
+
+        std::vector<uint32_t> code(static_cast<size_t>(fileSize) / sizeof(uint32_t));
+        file.seekg(0);
+        file.read(reinterpret_cast<char*>(code.data()), static_cast<std::streamsize>(fileSize));
+        if (!file)
+        {
+            throw std::runtime_error("Failed to read shader file: " + filename);
+        }
+
+        return code;
+    }
 
     SwapChainSupportDetails GetSwapChainSupportDetails(
         const vk::raii::PhysicalDevice& device,
@@ -353,8 +380,125 @@ void Renderer::CreateImageViews()
     }
 }
 
+void Renderer::CreateGraphicsPipeline()
+{
+    const auto vertexShaderCode = ReadSpirvFile("shaders/vert.spv");
+    const auto fragmentShaderCode = ReadSpirvFile("shaders/frag.spv");
+
+    const vk::ShaderModuleCreateInfo vertexShaderCreateInfo
+    {
+        .codeSize = vertexShaderCode.size() * sizeof(uint32_t),
+        .pCode = vertexShaderCode.data()
+    };
+    const vk::ShaderModuleCreateInfo fragmentShaderCreateInfo
+    {
+        .codeSize = fragmentShaderCode.size() * sizeof(uint32_t),
+        .pCode = fragmentShaderCode.data()
+    };
+
+    const vk::raii::ShaderModule vertexShader(device, vertexShaderCreateInfo);
+    const vk::raii::ShaderModule fragmentShader(device, fragmentShaderCreateInfo);
+
+    const std::array shaderStages
+    {
+        vk::PipelineShaderStageCreateInfo
+        {
+            .stage = vk::ShaderStageFlagBits::eVertex,
+            .module = *vertexShader,
+            .pName = "main"
+        },
+        vk::PipelineShaderStageCreateInfo
+        {
+            .stage = vk::ShaderStageFlagBits::eFragment,
+            .module = *fragmentShader,
+            .pName = "main"
+        }
+    };
+
+    const vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+    const vk::PipelineInputAssemblyStateCreateInfo inputAssembly
+    {
+        .topology = vk::PrimitiveTopology::eTriangleList,
+        .primitiveRestartEnable = false
+    };
+    const vk::PipelineViewportStateCreateInfo viewportState
+    {
+        .viewportCount = 1,
+        .scissorCount = 1
+    };
+    const vk::PipelineRasterizationStateCreateInfo rasterizer
+    {
+        .depthClampEnable = false,
+        .rasterizerDiscardEnable = false,
+        .polygonMode = vk::PolygonMode::eFill,
+        .cullMode = vk::CullModeFlagBits::eBack,
+        .frontFace = vk::FrontFace::eClockwise,
+        .depthBiasEnable = false,
+        .lineWidth = 1.0f
+    };
+    const vk::PipelineMultisampleStateCreateInfo multisampling
+    {
+        .rasterizationSamples = vk::SampleCountFlagBits::e1
+    };
+    const vk::PipelineColorBlendAttachmentState colorBlendAttachment
+    {
+        .blendEnable = false,
+        .colorWriteMask = vk::ColorComponentFlagBits::eR |
+            vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB |
+            vk::ColorComponentFlagBits::eA
+    };
+    const vk::PipelineColorBlendStateCreateInfo colorBlending
+    {
+        .logicOpEnable = false,
+        .logicOp = vk::LogicOp::eCopy,
+        .attachmentCount = 1,
+        .pAttachments = &colorBlendAttachment
+    };
+    constexpr std::array dynamicStates
+    {
+        vk::DynamicState::eViewport,
+        vk::DynamicState::eScissor
+    };
+    const vk::PipelineDynamicStateCreateInfo dynamicState
+    {
+        .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data()
+    };
+
+    const vk::PipelineLayoutCreateInfo layoutCreateInfo{};
+    pipelineLayout = vk::raii::PipelineLayout(device, layoutCreateInfo);
+
+    const vk::PipelineRenderingCreateInfo renderingInfo
+    {
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapChainImageFormat
+    };
+    const vk::GraphicsPipelineCreateInfo pipelineCreateInfo
+    {
+        .pNext = &renderingInfo,
+        .stageCount = static_cast<uint32_t>(shaderStages.size()),
+        .pStages = shaderStages.data(),
+        .pVertexInputState = &vertexInputInfo,
+        .pInputAssemblyState = &inputAssembly,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pDepthStencilState = nullptr,
+        .pColorBlendState = &colorBlending,
+        .pDynamicState = &dynamicState,
+        .layout = *pipelineLayout,
+        .renderPass = nullptr,
+        .subpass = 0
+    };
+
+    graphicsPipeline = device.createGraphicsPipeline(nullptr, pipelineCreateInfo);
+}
+
 void Renderer::DestroySwapChain()
 {
+    graphicsPipeline = nullptr;
+    pipelineLayout = nullptr;
     swapChainImageViews.clear();
     swapChain = nullptr;
     swapChainImages.clear();
