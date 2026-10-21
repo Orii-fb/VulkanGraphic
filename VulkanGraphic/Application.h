@@ -23,4 +23,5 @@ private:
 
 	void DestroyWindow();
 	void DestroyVulkan();
+	static void FramebufferResizeCallback(GLFWwindow* window, int, int);
 };

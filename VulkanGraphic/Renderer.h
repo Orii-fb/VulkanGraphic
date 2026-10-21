@@ -19,13 +19,15 @@ public:
     void CreateSurface(GLFWwindow* window);
     void PickPhysicalDevice();
     void CreateLogicalDevice();
+    void CreateSwapChainResources(GLFWwindow* window);
     void CreateSwapChain(GLFWwindow* window);
     void CreateImageViews();
     void CreateGraphicsPipeline();
     void CreateCommandPool();
     void CreateCommandBuffers();
     void CreateSyncObjects();
-    void DrawFrame();
+    void DrawFrame(GLFWwindow* window);
+    void NotifyFramebufferResized() noexcept;
     void DestroySwapChain();
     void DestroySurface();
 
@@ -53,6 +55,7 @@ private:
     vk::Extent2D swapChainExtent;
     uint32_t graphicsQueueFamilyIndex = 0;
     uint32_t currentFrame = 0;
+    bool framebufferResized = false;
 
     static constexpr uint32_t MaxFramesInFlight = 2;
 
@@ -63,6 +66,7 @@ private:
     vk::Extent2D ChooseSwapExtent(
         const vk::SurfaceCapabilitiesKHR& capabilities,
         GLFWwindow* window) const;
+    bool RecreateSwapChain(GLFWwindow* window);
     void RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint32_t imageIndex);
 
     std::vector<char const*> GetRequiredExtensions();

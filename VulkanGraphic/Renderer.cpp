@@ -272,6 +272,16 @@ void Renderer::CreateLogicalDevice()
     presentQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
 }
 
+void Renderer::CreateSwapChainResources(GLFWwindow* window)
+{
+    CreateSwapChain(window);
+    CreateImageViews();
+    CreateGraphicsPipeline();
+    CreateCommandPool();
+    CreateCommandBuffers();
+    CreateSyncObjects();
+}
+
 vk::SurfaceFormatKHR Renderer::ChooseSwapSurfaceFormat(
     const std::vector<vk::SurfaceFormatKHR>& availableFormats) const
 {
@@ -562,6 +572,29 @@ void Renderer::CreateSyncObjects()
     imagesInFlight.resize(swapChainImages.size(), nullptr);
 }
 
+bool Renderer::RecreateSwapChain(GLFWwindow* window)
+{
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    while (width == 0 || height == 0)
+    {
+        if (glfwWindowShouldClose(window))
+        {
+            return false;
+        }
+
+        glfwWaitEvents();
+        glfwGetFramebufferSize(window, &width, &height);
+    }
+
+    DestroySwapChain();
+    CreateSwapChainResources(window);
+    framebufferResized = false;
+    return true;
+}
+
 void Renderer::RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint32_t imageIndex)
 {
     commandBuffer.reset();
@@ -666,7 +699,7 @@ void Renderer::RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint3
     commandBuffer.end();
 }
 
-void Renderer::DrawFrame()
+void Renderer::DrawFrame(GLFWwindow* window)
 {
     if (device.waitForFences(*inFlightFences[currentFrame], true, UINT64_MAX) != vk::Result::eSuccess)
     {
@@ -677,6 +710,11 @@ void Renderer::DrawFrame()
         UINT64_MAX,
         *imageAvailableSemaphores[currentFrame],
         nullptr);
+    if (result == vk::Result::eErrorOutOfDateKHR)
+    {
+        RecreateSwapChain(window);
+        return;
+    }
     if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
     {
         throw std::runtime_error("Failed to acquire a swap chain image.");
@@ -719,12 +757,27 @@ void Renderer::DrawFrame()
         .pImageIndices = &imageIndex
     };
     const vk::Result presentResult = presentQueue.presentKHR(presentInfo);
-    if (presentResult != vk::Result::eSuccess && presentResult != vk::Result::eSuboptimalKHR)
+    if (presentResult != vk::Result::eSuccess &&
+        presentResult != vk::Result::eSuboptimalKHR &&
+        presentResult != vk::Result::eErrorOutOfDateKHR)
     {
         throw std::runtime_error("Failed to present a swap chain image.");
     }
 
     currentFrame = (currentFrame + 1) % MaxFramesInFlight;
+
+    if (result == vk::Result::eSuboptimalKHR ||
+        presentResult == vk::Result::eSuboptimalKHR ||
+        presentResult == vk::Result::eErrorOutOfDateKHR ||
+        framebufferResized)
+    {
+        RecreateSwapChain(window);
+    }
+}
+
+void Renderer::NotifyFramebufferResized() noexcept
+{
+    framebufferResized = true;
 }
 
 void Renderer::DestroySwapChain()

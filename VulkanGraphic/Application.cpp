@@ -11,7 +11,7 @@ void Application::Run()
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-        renderer.DrawFrame();
+        renderer.DrawFrame(window);
     }
 }
 
@@ -26,9 +26,11 @@ void Application::InitWindow()
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     window = glfwCreateWindow(800, 600, "Vulkano", nullptr, nullptr);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, FramebufferResizeCallback);
 }
 
 void Application::InitVulkan()
@@ -37,12 +39,7 @@ void Application::InitVulkan()
     renderer.CreateSurface(window);
     renderer.PickPhysicalDevice();
     renderer.CreateLogicalDevice();
-    renderer.CreateSwapChain(window);
-    renderer.CreateImageViews();
-    renderer.CreateGraphicsPipeline();
-    renderer.CreateCommandPool();
-    renderer.CreateCommandBuffers();
-    renderer.CreateSyncObjects();
+    renderer.CreateSwapChainResources(window);
 }
 
 void Application::DestroyWindow()
@@ -56,4 +53,13 @@ void Application::DestroyVulkan()
 {
     renderer.DestroySwapChain();
     renderer.DestroySurface();
+}
+
+void Application::FramebufferResizeCallback(GLFWwindow* window, int, int)
+{
+    auto* application = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    if (application != nullptr)
+    {
+        application->renderer.NotifyFramebufferResized();
+    }
 }
