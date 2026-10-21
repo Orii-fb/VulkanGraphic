@@ -22,9 +22,13 @@ public:
     void CreateSwapChain(GLFWwindow* window);
     void CreateImageViews();
     void CreateGraphicsPipeline();
+    void CreateCommandPool();
+    void CreateCommandBuffers();
+    void CreateSyncObjects();
+    void DrawFrame();
     void DestroySwapChain();
     void DestroySurface();
-    
+
 private:
     vk::raii::Context context;
     vk::raii::Instance instance = nullptr;
@@ -39,10 +43,19 @@ private:
     std::vector<vk::raii::ImageView> swapChainImageViews;
     vk::raii::PipelineLayout pipelineLayout = nullptr;
     vk::raii::Pipeline graphicsPipeline = nullptr;
+    vk::raii::CommandPool commandPool = nullptr;
+    std::vector<vk::raii::CommandBuffer> commandBuffers;
+    std::vector<vk::raii::Semaphore> imageAvailableSemaphores;
+    std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
+    std::vector<vk::raii::Fence> inFlightFences;
+    std::vector<vk::Fence> imagesInFlight;
     vk::Format swapChainImageFormat = vk::Format::eUndefined;
     vk::Extent2D swapChainExtent;
     uint32_t graphicsQueueFamilyIndex = 0;
-    
+    uint32_t currentFrame = 0;
+
+    static constexpr uint32_t MaxFramesInFlight = 2;
+
     vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(
         const std::vector<vk::SurfaceFormatKHR>& availableFormats) const;
     vk::PresentModeKHR ChooseSwapPresentMode(
@@ -50,15 +63,16 @@ private:
     vk::Extent2D ChooseSwapExtent(
         const vk::SurfaceCapabilitiesKHR& capabilities,
         GLFWwindow* window) const;
+    void RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint32_t imageIndex);
 
     std::vector<char const*> GetRequiredExtensions();
     std::vector<char const*> GetRequiredLayers();
-    
+
     void SetupDebugMessenger();
-    
+
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(
-        vk::DebugUtilsMessageSeverityFlagBitsEXT, 
-        vk::DebugUtilsMessageTypeFlagsEXT, 
+        vk::DebugUtilsMessageSeverityFlagBitsEXT,
+        vk::DebugUtilsMessageTypeFlagsEXT,
         const vk::DebugUtilsMessengerCallbackDataEXT*,
         void*);
 };
