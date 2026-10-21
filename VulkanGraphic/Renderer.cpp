@@ -1,9 +1,12 @@
-﻿#include "Renderer.h"
+#include "Renderer.h"
 #include "Debug.h"
+
+#include <Windows.h>
 
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -17,18 +20,33 @@ namespace
 {
     const std::vector<char const*> requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 
-    std::vector<uint32_t> ReadSpirvFile(const std::string& filename)
+    std::filesystem::path GetExecutableDirectory()
+    {
+        std::vector<wchar_t> pathBuffer(32768);
+        const DWORD pathLength = GetModuleFileNameW(
+            nullptr,
+            pathBuffer.data(),
+            static_cast<DWORD>(pathBuffer.size()));
+        if (pathLength == 0 || pathLength >= pathBuffer.size())
+        {
+            throw std::runtime_error("Failed to determine the executable directory.");
+        }
+
+        return std::filesystem::path(std::wstring(pathBuffer.data(), pathLength)).parent_path();
+    }
+
+    std::vector<uint32_t> ReadSpirvFile(const std::filesystem::path& filename)
     {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
         if (!file)
         {
-            throw std::runtime_error("Failed to open shader file: " + filename);
+            throw std::runtime_error("Failed to open shader file: " + filename.string());
         }
 
         const std::streamoff fileSize = file.tellg();
         if (fileSize <= 0 || fileSize % sizeof(uint32_t) != 0)
         {
-            throw std::runtime_error("Shader file has an invalid SPIR-V size: " + filename);
+            throw std::runtime_error("Shader file has an invalid SPIR-V size: " + filename.string());
         }
 
         std::vector<uint32_t> code(static_cast<size_t>(fileSize) / sizeof(uint32_t));
@@ -36,7 +54,7 @@ namespace
         file.read(reinterpret_cast<char*>(code.data()), static_cast<std::streamsize>(fileSize));
         if (!file)
         {
-            throw std::runtime_error("Failed to read shader file: " + filename);
+            throw std::runtime_error("Failed to read shader file: " + filename.string());
         }
 
         return code;
@@ -382,8 +400,9 @@ void Renderer::CreateImageViews()
 
 void Renderer::CreateGraphicsPipeline()
 {
-    const auto vertexShaderCode = ReadSpirvFile("shaders/vert.spv");
-    const auto fragmentShaderCode = ReadSpirvFile("shaders/frag.spv");
+    const auto shaderDirectory = GetExecutableDirectory() / L"shaders";
+    const auto vertexShaderCode = ReadSpirvFile(shaderDirectory / L"vert.spv");
+    const auto fragmentShaderCode = ReadSpirvFile(shaderDirectory / L"frag.spv");
 
     const vk::ShaderModuleCreateInfo vertexShaderCreateInfo
     {
@@ -431,8 +450,8 @@ void Renderer::CreateGraphicsPipeline()
         .depthClampEnable = false,
         .rasterizerDiscardEnable = false,
         .polygonMode = vk::PolygonMode::eFill,
-        .cullMode = vk::CullModeFlagBits::eBack,
-        .frontFace = vk::FrontFace::eClockwise,
+        .cullMode = vk::CullModeFlagBits::eNone,
+        .frontFace = vk::FrontFace::eCounterClockwise,
         .depthBiasEnable = false,
         .lineWidth = 1.0f
     };
