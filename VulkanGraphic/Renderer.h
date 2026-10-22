@@ -3,6 +3,7 @@
 #include "Dependencies.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 struct SwapChainSupportDetails
@@ -20,6 +21,7 @@ public:
     void PickPhysicalDevice();
     void CreateLogicalDevice();
     void CreateVertexBuffer();
+    void CreateIndexBuffer();
     void CreateSwapChainResources(GLFWwindow* window);
     void CreateSwapChain(GLFWwindow* window);
     void CreateImageViews();
@@ -43,6 +45,8 @@ private:
     vk::raii::Queue presentQueue = nullptr;
     vk::raii::Buffer vertexBuffer = nullptr;
     vk::raii::DeviceMemory vertexBufferMemory = nullptr;
+    vk::raii::Buffer indexBuffer = nullptr;
+    vk::raii::DeviceMemory indexBufferMemory = nullptr;
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
     std::vector<vk::raii::ImageView> swapChainImageViews;
@@ -71,6 +75,14 @@ private:
         GLFWwindow* window) const;
     bool RecreateSwapChain(GLFWwindow* window);
     void RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint32_t imageIndex);
+    std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(
+        vk::DeviceSize size,
+        vk::BufferUsageFlags usage,
+        vk::MemoryPropertyFlags properties) const;
+    void CopyBuffer(
+        const vk::raii::Buffer& sourceBuffer,
+        const vk::raii::Buffer& destinationBuffer,
+        vk::DeviceSize size) const;
 
     std::vector<char const*> GetRequiredExtensions();
     std::vector<char const*> GetRequiredLayers();

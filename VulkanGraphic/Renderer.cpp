@@ -58,10 +58,12 @@ namespace
 
     constexpr std::array vertices
     {
-        Vertex{ { 0.0f, -0.5f }, { 1.0f, 1.0f, 1.0f } },
-        Vertex{ { 0.5f, 0.5f }, { 0.0f, 1.0f, 0.0f } },
-        Vertex{ { -0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f } }
+        Vertex{ { -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
+        Vertex{ { 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f } },
+        Vertex{ { 0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f } },
+        Vertex{ { -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f } }
     };
+    constexpr std::array<uint16_t, 6> indices{ 0, 1, 2, 2, 3, 0 };
 
     const std::vector<char const*> requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 
@@ -320,13 +322,55 @@ void Renderer::CreateLogicalDevice()
 void Renderer::CreateVertexBuffer()
 {
     constexpr vk::DeviceSize bufferSize = sizeof(vertices);
+    auto [stagingBuffer, stagingBufferMemory] = CreateBuffer(
+        bufferSize,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    void* mappedMemory = stagingBufferMemory.mapMemory(0, bufferSize);
+    std::memcpy(mappedMemory, vertices.data(), static_cast<size_t>(bufferSize));
+    stagingBufferMemory.unmapMemory();
+
+    auto [deviceBuffer, deviceBufferMemory] = CreateBuffer(
+        bufferSize,
+        vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+        vk::MemoryPropertyFlagBits::eDeviceLocal);
+    CopyBuffer(stagingBuffer, deviceBuffer, bufferSize);
+    vertexBuffer = std::move(deviceBuffer);
+    vertexBufferMemory = std::move(deviceBufferMemory);
+}
+
+void Renderer::CreateIndexBuffer()
+{
+    constexpr vk::DeviceSize bufferSize = sizeof(indices);
+    auto [stagingBuffer, stagingBufferMemory] = CreateBuffer(
+        bufferSize,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    void* mappedMemory = stagingBufferMemory.mapMemory(0, bufferSize);
+    std::memcpy(mappedMemory, indices.data(), static_cast<size_t>(bufferSize));
+    stagingBufferMemory.unmapMemory();
+
+    auto [deviceBuffer, deviceBufferMemory] = CreateBuffer(
+        bufferSize,
+        vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+        vk::MemoryPropertyFlagBits::eDeviceLocal);
+    CopyBuffer(stagingBuffer, deviceBuffer, bufferSize);
+    indexBuffer = std::move(deviceBuffer);
+    indexBufferMemory = std::move(deviceBufferMemory);
+}
+
+std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> Renderer::CreateBuffer(
+    vk::DeviceSize size,
+    vk::BufferUsageFlags usage,
+    vk::MemoryPropertyFlags properties) const
+{
     const vk::BufferCreateInfo bufferCreateInfo
     {
-        .size = bufferSize,
-        .usage = vk::BufferUsageFlagBits::eVertexBuffer,
+        .size = size,
+        .usage = usage,
         .sharingMode = vk::SharingMode::eExclusive
     };
-    vertexBuffer = vk::raii::Buffer(device, bufferCreateInfo);
+    vk::raii::Buffer buffer(device, bufferCreateInfo);
 
     const vk::DeviceBufferMemoryRequirements memoryRequirementsInfo
     {
@@ -335,8 +379,6 @@ void Renderer::CreateVertexBuffer()
     const vk::MemoryRequirements2 memoryRequirements2 =
         device.getBufferMemoryRequirements(memoryRequirementsInfo);
     const vk::MemoryRequirements& memoryRequirements = memoryRequirements2.memoryRequirements;
-    const vk::MemoryPropertyFlags requiredMemoryProperties =
-        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
     const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
 
     std::optional<uint32_t> memoryTypeIndex;
@@ -344,7 +386,7 @@ void Renderer::CreateVertexBuffer()
     {
         const bool isAllowedType = (memoryRequirements.memoryTypeBits & (uint32_t{ 1 } << i)) != 0;
         const bool hasRequiredProperties =
-            (memoryProperties.memoryTypes[i].propertyFlags & requiredMemoryProperties) == requiredMemoryProperties;
+            (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties;
         if (isAllowedType && hasRequiredProperties)
         {
             memoryTypeIndex = i;
@@ -354,7 +396,7 @@ void Renderer::CreateVertexBuffer()
 
     if (!memoryTypeIndex.has_value())
     {
-        throw std::runtime_error("Failed to find host-visible, coherent memory for the vertex buffer.");
+        throw std::runtime_error("Failed to find a compatible memory type for a buffer.");
     }
 
     const vk::MemoryAllocateInfo allocateInfo
@@ -362,12 +404,44 @@ void Renderer::CreateVertexBuffer()
         .allocationSize = memoryRequirements.size,
         .memoryTypeIndex = *memoryTypeIndex
     };
-    vertexBufferMemory = vk::raii::DeviceMemory(device, allocateInfo);
-    vertexBuffer.bindMemory(*vertexBufferMemory, 0);
+    vk::raii::DeviceMemory memory(device, allocateInfo);
+    buffer.bindMemory(*memory, 0);
+    return { std::move(buffer), std::move(memory) };
+}
 
-    void* mappedMemory = vertexBufferMemory.mapMemory(0, bufferSize);
-    std::memcpy(mappedMemory, vertices.data(), static_cast<size_t>(bufferSize));
-    vertexBufferMemory.unmapMemory();
+void Renderer::CopyBuffer(
+    const vk::raii::Buffer& sourceBuffer,
+    const vk::raii::Buffer& destinationBuffer,
+    vk::DeviceSize size) const
+{
+    const vk::CommandBufferAllocateInfo allocateInfo
+    {
+        .commandPool = *commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+    auto copyCommandBuffers = device.allocateCommandBuffers(allocateInfo);
+    vk::raii::CommandBuffer& copyCommandBuffer = copyCommandBuffers.front();
+    const vk::CommandBufferBeginInfo beginInfo
+    {
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    };
+    copyCommandBuffer.begin(beginInfo);
+    const vk::BufferCopy copyRegion
+    {
+        .size = size
+    };
+    copyCommandBuffer.copyBuffer(*sourceBuffer, *destinationBuffer, copyRegion);
+    copyCommandBuffer.end();
+
+    const vk::CommandBuffer commandBuffer = *copyCommandBuffer;
+    const vk::SubmitInfo submitInfo
+    {
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBuffer
+    };
+    graphicsQueue.submit(submitInfo, nullptr);
+    graphicsQueue.waitIdle();
 }
 
 void Renderer::CreateSwapChainResources(GLFWwindow* window)
@@ -759,6 +833,7 @@ void Renderer::RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint3
     const std::array vertexBuffers{ *vertexBuffer };
     constexpr std::array<vk::DeviceSize, 1> vertexOffsets{ 0 };
     commandBuffer.bindVertexBuffers(0, vertexBuffers, vertexOffsets);
+    commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
 
     const vk::Viewport viewport
     {
@@ -776,7 +851,7 @@ void Renderer::RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint3
     };
     commandBuffer.setViewport(0, viewport);
     commandBuffer.setScissor(0, scissor);
-    commandBuffer.draw(3, 1, 0, 0);
+    commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
     commandBuffer.endRendering();
 
     const vk::ImageMemoryBarrier toPresent

@@ -39,8 +39,9 @@ void Application::InitVulkan()
     renderer.CreateSurface(window);
     renderer.PickPhysicalDevice();
     renderer.CreateLogicalDevice();
-    renderer.CreateVertexBuffer();
     renderer.CreateSwapChainResources(window);
+    renderer.CreateVertexBuffer();
+    renderer.CreateIndexBuffer();
 }
 
 void Application::DestroyWindow()
