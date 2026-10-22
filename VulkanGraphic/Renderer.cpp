@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +19,50 @@
 
 namespace
 {
+    struct Vertex
+    {
+        std::array<float, 2> position;
+        std::array<float, 3> color;
+
+        static vk::VertexInputBindingDescription GetBindingDescription()
+        {
+            return
+            {
+                .binding = 0,
+                .stride = sizeof(Vertex),
+                .inputRate = vk::VertexInputRate::eVertex
+            };
+        }
+
+        static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescriptions()
+        {
+            return
+            {
+                vk::VertexInputAttributeDescription
+                {
+                    .location = 0,
+                    .binding = 0,
+                    .format = vk::Format::eR32G32Sfloat,
+                    .offset = offsetof(Vertex, position)
+                },
+                vk::VertexInputAttributeDescription
+                {
+                    .location = 1,
+                    .binding = 0,
+                    .format = vk::Format::eR32G32B32Sfloat,
+                    .offset = offsetof(Vertex, color)
+                }
+            };
+        }
+    };
+
+    constexpr std::array vertices
+    {
+        Vertex{ { 0.0f, -0.5f }, { 1.0f, 1.0f, 1.0f } },
+        Vertex{ { 0.5f, 0.5f }, { 0.0f, 1.0f, 0.0f } },
+        Vertex{ { -0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f } }
+    };
+
     const std::vector<char const*> requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 
     std::filesystem::path GetExecutableDirectory()
@@ -272,6 +317,59 @@ void Renderer::CreateLogicalDevice()
     presentQueue = vk::raii::Queue(device, graphicsQueueFamilyIndex, 0);
 }
 
+void Renderer::CreateVertexBuffer()
+{
+    constexpr vk::DeviceSize bufferSize = sizeof(vertices);
+    const vk::BufferCreateInfo bufferCreateInfo
+    {
+        .size = bufferSize,
+        .usage = vk::BufferUsageFlagBits::eVertexBuffer,
+        .sharingMode = vk::SharingMode::eExclusive
+    };
+    vertexBuffer = vk::raii::Buffer(device, bufferCreateInfo);
+
+    const vk::DeviceBufferMemoryRequirements memoryRequirementsInfo
+    {
+        .pCreateInfo = &bufferCreateInfo
+    };
+    const vk::MemoryRequirements2 memoryRequirements2 =
+        device.getBufferMemoryRequirements(memoryRequirementsInfo);
+    const vk::MemoryRequirements& memoryRequirements = memoryRequirements2.memoryRequirements;
+    const vk::MemoryPropertyFlags requiredMemoryProperties =
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+    const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
+
+    std::optional<uint32_t> memoryTypeIndex;
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+    {
+        const bool isAllowedType = (memoryRequirements.memoryTypeBits & (uint32_t{ 1 } << i)) != 0;
+        const bool hasRequiredProperties =
+            (memoryProperties.memoryTypes[i].propertyFlags & requiredMemoryProperties) == requiredMemoryProperties;
+        if (isAllowedType && hasRequiredProperties)
+        {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+
+    if (!memoryTypeIndex.has_value())
+    {
+        throw std::runtime_error("Failed to find host-visible, coherent memory for the vertex buffer.");
+    }
+
+    const vk::MemoryAllocateInfo allocateInfo
+    {
+        .allocationSize = memoryRequirements.size,
+        .memoryTypeIndex = *memoryTypeIndex
+    };
+    vertexBufferMemory = vk::raii::DeviceMemory(device, allocateInfo);
+    vertexBuffer.bindMemory(*vertexBufferMemory, 0);
+
+    void* mappedMemory = vertexBufferMemory.mapMemory(0, bufferSize);
+    std::memcpy(mappedMemory, vertices.data(), static_cast<size_t>(bufferSize));
+    vertexBufferMemory.unmapMemory();
+}
+
 void Renderer::CreateSwapChainResources(GLFWwindow* window)
 {
     CreateSwapChain(window);
@@ -444,7 +542,15 @@ void Renderer::CreateGraphicsPipeline()
         }
     };
 
-    const vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+    const vk::VertexInputBindingDescription bindingDescription = Vertex::GetBindingDescription();
+    const auto attributeDescriptions = Vertex::GetAttributeDescriptions();
+    const vk::PipelineVertexInputStateCreateInfo vertexInputInfo
+    {
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &bindingDescription,
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+        .pVertexAttributeDescriptions = attributeDescriptions.data()
+    };
     const vk::PipelineInputAssemblyStateCreateInfo inputAssembly
     {
         .topology = vk::PrimitiveTopology::eTriangleList,
@@ -650,6 +756,9 @@ void Renderer::RecordCommandBuffer(vk::raii::CommandBuffer& commandBuffer, uint3
 
     commandBuffer.beginRendering(renderingInfo);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+    const std::array vertexBuffers{ *vertexBuffer };
+    constexpr std::array<vk::DeviceSize, 1> vertexOffsets{ 0 };
+    commandBuffer.bindVertexBuffers(0, vertexBuffers, vertexOffsets);
 
     const vk::Viewport viewport
     {

@@ -19,6 +19,7 @@ public:
     void CreateSurface(GLFWwindow* window);
     void PickPhysicalDevice();
     void CreateLogicalDevice();
+    void CreateVertexBuffer();
     void CreateSwapChainResources(GLFWwindow* window);
     void CreateSwapChain(GLFWwindow* window);
     void CreateImageViews();
@@ -40,6 +41,8 @@ private:
     vk::raii::Device device = nullptr;
     vk::raii::Queue graphicsQueue = nullptr;
     vk::raii::Queue presentQueue = nullptr;
+    vk::raii::Buffer vertexBuffer = nullptr;
+    vk::raii::DeviceMemory vertexBufferMemory = nullptr;
     vk::raii::SwapchainKHR swapChain = nullptr;
     std::vector<vk::Image> swapChainImages;
     std::vector<vk::raii::ImageView> swapChainImageViews;
