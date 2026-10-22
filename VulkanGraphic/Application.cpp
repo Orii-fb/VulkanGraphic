@@ -1,9 +1,20 @@
 #include "Application.h"
 
+#include <stdexcept>
+
 void Application::Init()
 {
     InitWindow();
-    InitVulkan();
+
+    constexpr std::array<Vertex, 4> vertices
+    {
+        Vertex{ { -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
+        Vertex{ { 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f } },
+        Vertex{ { 0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f } },
+        Vertex{ { -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f } }
+    };
+    constexpr std::array<uint16_t, 6> indices{ 0, 1, 2, 2, 3, 0 };
+    renderer.Initialize(window, vertices, indices);
 }
 
 void Application::Run()
@@ -17,44 +28,40 @@ void Application::Run()
 
 void Application::Destroy()
 {
-    DestroyVulkan();
+    renderer.Shutdown();
     DestroyWindow();
 }
 
 void Application::InitWindow()
 {
-    glfwInit();
+    if (glfwInit() != GLFW_TRUE)
+    {
+        throw std::runtime_error("Failed to initialize GLFW.");
+    }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     window = glfwCreateWindow(800, 600, "Vulkano", nullptr, nullptr);
+    if (window == nullptr)
+    {
+        glfwTerminate();
+        throw std::runtime_error("Failed to create the application window.");
+    }
+
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, FramebufferResizeCallback);
 }
 
-void Application::InitVulkan()
-{
-    renderer.CreateInstance();
-    renderer.CreateSurface(window);
-    renderer.PickPhysicalDevice();
-    renderer.CreateLogicalDevice();
-    renderer.CreateSwapChainResources(window);
-    renderer.CreateVertexBuffer();
-    renderer.CreateIndexBuffer();
-}
-
 void Application::DestroyWindow()
 {
-    glfwDestroyWindow(window);
+    if (window != nullptr)
+    {
+        glfwDestroyWindow(window);
+        window = nullptr;
+        glfwTerminate();
+    }
 
-    glfwTerminate();
-}
-
-void Application::DestroyVulkan()
-{
-    renderer.DestroySwapChain();
-    renderer.DestroySurface();
 }
 
 void Application::FramebufferResizeCallback(GLFWwindow* window, int, int)

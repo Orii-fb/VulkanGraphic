@@ -1,27 +1,21 @@
 #pragma once
 
-#include "Dependencies.h"
 #include "Renderer.h"
+
+#include <GLFW/glfw3.h>
 
 class Application
 {
 public:
-	int width = 800;
-	int height = 600;
-
-	GLFWwindow* window = nullptr;
-
 	void Init();
 	void Run();
 	void Destroy();
 
 private:
+	GLFWwindow* window = nullptr;
 	Renderer renderer;
 
 	void InitWindow();
-	void InitVulkan();
-
 	void DestroyWindow();
-	void DestroyVulkan();
 	static void FramebufferResizeCallback(GLFWwindow* window, int, int);
 };

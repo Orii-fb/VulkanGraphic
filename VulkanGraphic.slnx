@@ -4,4 +4,6 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="VulkanGraphic/VulkanGraphic.vcxproj" />
+  <Project Path="Renderer/Renderer.vcxproj" />
+  <Project Path="ClientTest/ClientTest.vcxproj" />
 </Solution>

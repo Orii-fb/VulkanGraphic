@@ -1,6 +1,7 @@
-﻿#pragma once
+#pragma once
 
 #include "Dependencies.h"
+#include "Renderer.h"
 
 #include <cstdint>
 #include <utility>
@@ -13,28 +14,12 @@ struct SwapChainSupportDetails
     std::vector<vk::PresentModeKHR> presentModes;
 };
 
-class Renderer
-{
-public:
-    void CreateInstance();
-    void CreateSurface(GLFWwindow* window);
-    void PickPhysicalDevice();
-    void CreateLogicalDevice();
-    void CreateVertexBuffer();
-    void CreateIndexBuffer();
-    void CreateSwapChainResources(GLFWwindow* window);
-    void CreateSwapChain(GLFWwindow* window);
-    void CreateImageViews();
-    void CreateGraphicsPipeline();
-    void CreateCommandPool();
-    void CreateCommandBuffers();
-    void CreateSyncObjects();
-    void DrawFrame(GLFWwindow* window);
-    void NotifyFramebufferResized() noexcept;
-    void DestroySwapChain();
-    void DestroySurface();
+SwapChainSupportDetails GetSwapChainSupportDetails(
+    const vk::raii::PhysicalDevice& device,
+    const vk::raii::SurfaceKHR& surface);
 
-private:
+struct Renderer::Impl
+{
     vk::raii::Context context;
     vk::raii::Instance instance = nullptr;
     vk::raii::SurfaceKHR surface = nullptr;
@@ -62,9 +47,37 @@ private:
     vk::Extent2D swapChainExtent;
     uint32_t graphicsQueueFamilyIndex = 0;
     uint32_t currentFrame = 0;
+    uint32_t indexCount = 0;
     bool framebufferResized = false;
+    bool logicalDeviceCreated = false;
+    bool initializationStarted = false;
+    bool initialized = false;
+    bool shutdown = false;
 
     static constexpr uint32_t MaxFramesInFlight = 2;
+
+    void Initialize(
+        GLFWwindow* window,
+        std::span<const Vertex> vertices,
+        std::span<const uint16_t> indices);
+    void CreateInstance();
+    void CreateSurface(GLFWwindow* window);
+    void PickPhysicalDevice();
+    void CreateLogicalDevice();
+    void CreateVertexBuffer(std::span<const Vertex> vertices);
+    void CreateIndexBuffer(std::span<const uint16_t> indices);
+    void CreateSwapChainResources(GLFWwindow* window);
+    void CreateSwapChain(GLFWwindow* window);
+    void CreateImageViews();
+    void CreateGraphicsPipeline();
+    void CreateCommandPool();
+    void CreateCommandBuffers();
+    void CreateSyncObjects();
+    void DrawFrame(GLFWwindow* window);
+    void NotifyFramebufferResized() noexcept;
+    void Shutdown();
+    void DestroySwapChain();
+    void DestroySurface();
 
     vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(
         const std::vector<vk::SurfaceFormatKHR>& availableFormats) const;
@@ -86,7 +99,6 @@ private:
 
     std::vector<char const*> GetRequiredExtensions();
     std::vector<char const*> GetRequiredLayers();
-
     void SetupDebugMessenger();
 
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(

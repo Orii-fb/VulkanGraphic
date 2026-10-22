@@ -1,0 +1,11 @@
+# Build outputs for the Visual Studio projects
+/x64/
+/Renderer/x64/
+/ClientTest/x64/
+/VulkanGraphic/x64/
+/Renderer/**/x64/
+/ClientTest/**/x64/
+/VulkanGraphic/**/x64/
+/Renderer/build/
+/ClientTest/build/
+/VulkanGraphic/build/
