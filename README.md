@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/vulkan-graphic-banner.svg" alt="VulkanGraphic, renderer Vulkan en C++" width="100%">
+  <img src="docs/Vulkan_Logo.png" alt="VulkanGraphic, renderer Vulkan en C++" width="100%">
 </p>
 
 <p align="center">
